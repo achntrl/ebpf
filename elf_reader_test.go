@@ -4,7 +4,6 @@ import (
 	"flag"
 	"path/filepath"
 	"reflect"
-	"strings"
 	"testing"
 
 	"github.com/DataDog/ebpf/internal"
@@ -219,9 +218,36 @@ func TestLoadInvalidMap(t *testing.T) {
 	})
 }
 
+func TestLoadRawTracepoint(t *testing.T) {
+	testutils.SkipOnOldKernel(t, "4.17", "BPF_RAW_TRACEPOINT API")
+
+	testutils.TestFiles(t, "testdata/raw_tracepoint-*.elf", func(t *testing.T, file string) {
+		spec, err := LoadCollectionSpec(file)
+		if err != nil {
+			t.Fatal("Can't parse ELF:", err)
+		}
+
+		if spec.Programs["sched_process_exec"].ByteOrder != internal.NativeEndian {
+			return
+		}
+
+		coll, err := NewCollectionWithOptions(spec, CollectionOptions{
+			Programs: ProgramOptions{
+				LogLevel: 1,
+			},
+		}, nil)
+		testutils.SkipIfNotSupported(t, err)
+		if err != nil {
+			t.Fatal("Can't create collection:", err)
+		}
+
+		coll.Close()
+	})
+}
+
 var (
 	elfPath    = flag.String("elfs", "", "`Path` containing libbpf-compatible ELFs")
-	elfPattern = flag.String("elf-pattern", "test_*.o", "Glob `pattern` for object files that should be tested")
+	elfPattern = flag.String("elf-pattern", "*.o", "Glob `pattern` for object files that should be tested")
 )
 
 func TestLibBPFCompat(t *testing.T) {
@@ -232,23 +258,44 @@ func TestLibBPFCompat(t *testing.T) {
 		t.Skip("No path specified")
 	}
 
-	testutils.TestFiles(t, filepath.Join(*elfPath, *elfPattern), func(t *testing.T, file string) {
-		if strings.Contains(filepath.Base(file), "_core_") {
-			t.Skip("CO-RE is not implemented")
-		}
-
+	testutils.TestFiles(t, filepath.Join(*elfPath, *elfPattern), func(t *testing.T, path string) {
 		t.Parallel()
 
-		spec, err := LoadCollectionSpec(file)
+		file := filepath.Base(path)
+		_, err := LoadCollectionSpec(path)
+		testutils.SkipIfNotSupported(t, err)
 		if err != nil {
 			t.Fatalf("Can't read %s: %s", file, err)
 		}
-
-		coll, err := NewCollection(spec)
-		testutils.SkipIfNotSupported(t, err)
-		if err != nil {
-			t.Fatal(err)
-		}
-		coll.Close()
 	})
+}
+
+func TestGetProgType(t *testing.T) {
+	testcases := []struct {
+		section string
+		pt      ProgramType
+		at      AttachType
+		to      string
+	}{
+		{"socket/garbage", SocketFilter, AttachNone, ""},
+		{"kprobe/func", Kprobe, AttachNone, "func"},
+		{"xdp/foo", XDP, AttachNone, ""},
+		{"cgroup_skb/ingress", CGroupSKB, AttachCGroupInetIngress, ""},
+		{"iter/bpf_map", Tracing, AttachTraceIter, "bpf_map"},
+	}
+
+	for _, tc := range testcases {
+		pt, at, to := getProgType(tc.section)
+		if pt != tc.pt {
+			t.Errorf("section %s: expected type %s, got %s", tc.section, tc.pt, pt)
+		}
+
+		if at != tc.at {
+			t.Errorf("section %s: expected attach type %s, got %s", tc.section, tc.at, at)
+		}
+
+		if to != tc.to {
+			t.Errorf("section %s: expected attachment to be %q, got %q", tc.section, tc.to, to)
+		}
+	}
 }

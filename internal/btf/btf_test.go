@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -30,26 +31,23 @@ func TestParseVmlinux(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, _, err = parseBTF(bytes.NewReader(buf), binary.LittleEndian)
+	_, err = loadNakedSpec(bytes.NewReader(buf), binary.LittleEndian, nil, nil)
 	if err != nil {
 		t.Fatal("Can't load BTF:", err)
 	}
 }
 
 func TestParseCurrentKernelBTF(t *testing.T) {
-	if _, err := os.Stat("/sys/kernel/btf/vmlinux"); os.IsNotExist(err) {
-		t.Skip("/sys/kernel/btf/vmlinux is not available")
+	spec, err := loadKernelSpec()
+	if errors.Is(err, ErrNotFound) {
+		t.Skip("BTF is not available:", err)
 	}
-
-	fh, err := os.Open("/sys/kernel/btf/vmlinux")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer fh.Close()
-
-	_, _, err = parseBTF(fh, binary.LittleEndian)
 	if err != nil {
 		t.Fatal("Can't load BTF:", err)
+	}
+
+	if len(spec.types) == 0 {
+		t.Fatal("Empty kernel BTF")
 	}
 }
 
@@ -84,7 +82,12 @@ func TestLoadSpecFromElf(t *testing.T) {
 
 		var bpfMapDef Struct
 		if err := spec.FindType("bpf_map_def", &bpfMapDef); err != nil {
-			t.Fatal("Can't find bpf_map_def:", err)
+			t.Error("Can't find bpf_map_def:", err)
+		}
+
+		var tmp Void
+		if err := spec.FindType("totally_bogus_type", &tmp); !errors.Is(err, ErrNotFound) {
+			t.Error("FindType doesn't return ErrNotFound:", err)
 		}
 
 		if spec.byteOrder != internal.NativeEndian {
@@ -104,6 +107,10 @@ func TestLoadSpecFromElf(t *testing.T) {
 
 func TestHaveBTF(t *testing.T) {
 	testutils.CheckFeatureTest(t, haveBTF)
+}
+
+func TestHaveFuncLinkage(t *testing.T) {
+	testutils.CheckFeatureTest(t, haveFuncLinkage)
 }
 
 func ExampleSpec_FindType() {

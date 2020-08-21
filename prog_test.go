@@ -3,6 +3,7 @@ package ebpf
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"math"
@@ -18,7 +19,6 @@ import (
 	"github.com/DataDog/ebpf/internal"
 	"github.com/DataDog/ebpf/internal/testutils"
 	"github.com/DataDog/ebpf/internal/unix"
-	"golang.org/x/xerrors"
 )
 
 func TestProgramRun(t *testing.T) {
@@ -271,7 +271,7 @@ func TestProgramVerifierOutput(t *testing.T) {
 	}
 
 	var ve *internal.VerifierError
-	if !xerrors.As(err, &ve) {
+	if !errors.As(err, &ve) {
 		t.Error("Error is not a VerifierError")
 	}
 }
@@ -388,44 +388,6 @@ func TestProgramFromFD(t *testing.T) {
 	prog2.Close()
 }
 
-func TestProgramAlter(t *testing.T) {
-	testutils.SkipOnOldKernel(t, "4.13", "SkSKB type")
-
-	var err error
-	var prog *Program
-	prog, err = NewProgram(&ProgramSpec{
-		Type: SkSKB,
-		Instructions: asm.Instructions{
-			asm.LoadImm(asm.R0, 0, asm.DWord),
-			asm.Return(),
-		},
-		License: "MIT",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer prog.Close()
-
-	var sockMap *Map
-	sockMap, err = NewMap(&MapSpec{
-		Type:       MapType(15), // BPF_MAP_TYPE_SOCKMAP
-		KeySize:    4,
-		ValueSize:  4,
-		MaxEntries: 2,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer sockMap.Close()
-
-	if err := prog.Attach(sockMap.FD(), AttachSkSKBStreamParser, AttachFlags(0)); err != nil {
-		t.Fatal(err)
-	}
-	if err := prog.Detach(sockMap.FD(), AttachSkSKBStreamParser, AttachFlags(0)); err != nil {
-		t.Fatal(err)
-	}
-}
-
 func TestHaveProgTestRun(t *testing.T) {
 	testutils.CheckFeatureTest(t, haveProgTestRun)
 }
@@ -459,7 +421,7 @@ func TestProgramGetNextID(t *testing.T) {
 	for {
 		last := next
 		if next, err = ProgramGetNextID(last); err != nil {
-			if !xerrors.Is(err, ErrNotExist) {
+			if !errors.Is(err, ErrNotExist) {
 				t.Fatal("Expected ErrNotExist, got:", err)
 			}
 			break
@@ -498,7 +460,7 @@ func TestNewProgramFromID(t *testing.T) {
 
 	// As there can be multiple programs, we use max(uint32) as ProgramID to trigger an expected error.
 	_, err = NewProgramFromID(ProgramID(math.MaxUint32))
-	if !xerrors.Is(err, ErrNotExist) {
+	if !errors.Is(err, ErrNotExist) {
 		t.Fatal("Expected ErrNotExist, got:", err)
 	}
 }

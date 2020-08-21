@@ -2,12 +2,12 @@ package testutils
 
 import (
 	"bytes"
+	"errors"
 	"sync"
 	"testing"
 
 	"github.com/DataDog/ebpf/internal"
 	"github.com/DataDog/ebpf/internal/unix"
-	"golang.org/x/xerrors"
 )
 
 var (
@@ -43,15 +43,22 @@ func CheckFeatureTest(t *testing.T, fn func() error) {
 		return
 	}
 
-	ufe := err.(*internal.UnsupportedFeatureError)
-	checkKernelVersion(t, ufe)
+	var ufe *internal.UnsupportedFeatureError
+	if errors.As(err, &ufe) {
+		checkKernelVersion(t, ufe)
+	} else {
+		t.Error("Feature test failed:", err)
+	}
 }
 
 func SkipIfNotSupported(tb testing.TB, err error) {
 	var ufe *internal.UnsupportedFeatureError
-	if xerrors.As(err, &ufe) {
+	if errors.As(err, &ufe) {
 		checkKernelVersion(tb, ufe)
 		tb.Skip(ufe.Error())
+	}
+	if errors.Is(err, internal.ErrNotSupported) {
+		tb.Skip(err.Error())
 	}
 }
 
