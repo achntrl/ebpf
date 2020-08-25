@@ -366,6 +366,10 @@ func (m *Manager) InitWithOptions(elf io.ReaderAt, options Options) error {
 		return err
 	}
 
+	for _, excludedProgram := range m.options.ExcludedProbes {
+		delete(m.collectionSpec.Programs, excludedProgram)
+	}
+
 	// Match Maps and program specs
 	if err := m.matchSpecs(); err != nil {
 		m.stateLock.Unlock()
