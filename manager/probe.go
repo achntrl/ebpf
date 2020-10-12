@@ -344,8 +344,7 @@ func (p *Probe) Attach() error {
 			return err
 		}
 		return nil
-	}, retry.Attempts(p.ProbeRetry), retry.Delay(p.ProbeRetryDelay)
-	})
+	}, retry.Attempts(p.ProbeRetry), retry.Delay(p.ProbeRetryDelay))
 }
 
 // attach - Thread unsafe version of attach
