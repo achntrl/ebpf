@@ -337,7 +337,15 @@ func (p *Probe) init() error {
 // Attach - Attaches the probe to the right hook point in the kernel depending on the program type and the provided
 // parameters.
 func (p *Probe) Attach() error {
-	return retry.Do(p.attach, retry.Attempts(p.ProbeRetry), retry.Delay(p.ProbeRetryDelay))
+	return retry.Do(func() error {
+		fmt.Printf("trying to attach %s\n", p.GetIdentificationPair())
+		if err := p.attach(); err != nil {
+			fmt.Printf("got err: %v\n", err)
+			return err
+		}
+		return nil
+	}, retry.Attempts(p.ProbeRetry), retry.Delay(p.ProbeRetryDelay)
+	})
 }
 
 // attach - Thread unsafe version of attach
